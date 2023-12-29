@@ -1,0 +1,112 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+version: "3.9"
+
+x-superset-common: &superset-common
+  build:
+    context: ./superset
+    dockerfile: superset.Dockerfile
+  networks:
+    - dap_net
+  env_file:
+    - .env.superset
+  environment:
+    SUPERSET_LOAD_EXAMPLES: true
+    REDIS_HOST: redis
+    REDIS_PORT: 6379
+  depends_on: &superset-common-depends-on
+    redis:
+      condition: service_healthy
+    ss_db:
+      condition: service_healthy
+
+services:
+  superset:
+    <<: *superset-common
+    image: dap_superset:3.1.0rc3-py310
+    command: [ "/app/docker/docker-bootstrap.sh", "app-gunicorn" ]
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    depends_on:
+      <<: *superset-common-depends-on
+      ss_init:
+        condition: service_completed_successfully
+    volumes:
+      - dap_ss_core_vol:/app/superset_home
+
+  ss_db:
+    image: dap_ss_db:16.1
+    build:
+      context: ./superset
+      dockerfile: postgres.Dockerfile
+    env_file:
+      - .env.superset
+    networks:
+      - dap_net
+    ports:
+      - "5442:5432"
+    volumes:
+      - dap_ss_db_vol:/var/lib/postgresql/data/
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h ss_db -d $${POSTGRES_DB} -U $${POSTGRES_USER}"
+        ]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  ss_init:
+    <<: *superset-common
+    command: [ "/app/docker/docker-init.sh" ]
+    depends_on:
+      - redis
+      - ss_db
+    volumes:
+      - dap_ss_core_vol:/app/superset_home
+    healthcheck:
+      disable: true
+
+  redis:
+    image: dap_redis:7.2.3
+    build:
+      context: ./redis
+      dockerfile: redis.Dockerfile
+    ports:
+      - "6379:6379"
+    volumes:
+      - dap_redis_vol:/data
+    networks:
+      - dap_net
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+
+
+networks:
+  dap_net:
+
+volumes:
+  dap_redis_vol:
+  dap_ss_core_vol:
+  dap_ss_db_vol:
+

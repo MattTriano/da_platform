@@ -46,8 +46,8 @@ POSTGRES_USER=airflow_metadata_db_username
 POSTGRES_PASSWORD=airflow_metadata_db_password 
 POSTGRES_DB=airflow_metadata_db
 
-AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow_metadata_db_username:airflow_metadata_db_password@airflow_db/airflow_metadata_db
-AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow_metadata_db_username:airflow_metadata_db_password@airflow_db/airflow_metadata_db
+AIRFLOW__CELERY__BROKER_URL=redis://:@redis:6379/0
 AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow_metadata_db_username:airflow_metadata_db_password@airflow_db/airflow_metadata_db
 AIRFLOW_UID=1000
 _AIRFLOW_WWW_USER_USERNAME=airflow_web_gui_username
@@ -56,6 +56,9 @@ AIRFLOW__CORE__FERNET_KEY=fernet_key_as_generated_below
 AIRFLOW__CORE__ENABLE_XCOM_PICKLING=True
 AIRFLOW__WEBSERVER__SECRET_KEY=webserver_secret_key_as_generated_below
 AIRFLOW__WEBSERVER__SESSION_BACKEND=securecookie
+JUPYTER_CONFIG_DIR="/opt/airflow/.jupyter"
+JUPYTER_DATA_DIR="/opt/airflow/.jupyter/share/jupyter"
+JUPYTER_RUNTIME_DIR="/opt/airflow/.jupyter/share/jupyter/runtime"
 ```
 
 ### Generating a Fernet key

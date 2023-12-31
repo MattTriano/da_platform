@@ -71,14 +71,18 @@ services:
     volumes:
       - dap_af_db_vol:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h af_db -d $${POSTGRES_DB} -U $${POSTGRES_USER}"
+        ]
       interval: 10s
       retries: 5
       start_period: 5s
     restart: always
 
   af_scheduler:
-    image: dap_af_scheduler:2.8.0
+    image: dap_af_scheduler:2.7.3
     <<: *airflow-common
     command: scheduler
     healthcheck:
@@ -94,7 +98,7 @@ services:
         condition: service_completed_successfully
 
   af_init:
-    image: dap_af_init:2.8.0
+    image: dap_af_init:2.7.3
     <<: *airflow-common
     entrypoint: /bin/bash
     # yamllint disable rule:line-length
@@ -159,7 +163,7 @@ services:
       - ./platform:/sources
 
   af_webserver:
-    image: dap_af_webserver:2.8.0
+    image: dap_af_webserver:2.7.3
     <<: *airflow-common
     command: webserver
     ports:

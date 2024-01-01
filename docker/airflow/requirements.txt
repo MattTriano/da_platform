@@ -1,6 +1,17 @@
 dbt-core==1.7.4
 dbt-extractor==0.5.1
 dbt-postgres==1.7.4
+Fiona==1.9.5
+GeoAlchemy2==0.14.3
 geopandas==0.14.1
+great-expectations==0.18.7
+jupyterlab==4.0.10
+jupyterlab-pygments==0.3.0
+jupyterlab-widgets==3.0.9
+networkx==2.8.8
+pyproj==3.6.1
 pytest==7.4.3
+Rtree==1.1.0
 scikit-learn==1.3.2
+scipy==1.11.4
+shapely==2.0.2

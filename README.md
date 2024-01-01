@@ -34,6 +34,8 @@ docker compose up
 
 Then, go to that host at port 8088 in your browser. If you're running it locally (or have port forwarding set up), go to [http://127.0.0.1:8088](http://127.0.0.1:8088), and if you're running it remotely, go to [http://host-name:8088](http://host-name:8088). Log in using the `ADMIN_USERNAME` and `ADMIN_PASSWORD` defined in the `.env.superset` file.
 
+You can also access the Celery Flower interface at [http://127.0.0.1:5555](http://127.0.0.1:5555), and if you're running it remotely, go to [http://host-name:5555](http://host-name:5555) (at present, there's no authentication).
+
 NOTE:
 * This currently is set up to work over http, which is generally a bad idea for services that involve authentication. This is survivable for now as it's just being run on a private system, but maybe it's worth figuring out SSL certs on a private system, so that credentials are encrypted in transit.
 

@@ -68,22 +68,6 @@ services:
       start_period: 5s
     restart: always
 
-  af_scheduler:
-    image: dap_af_scheduler:2.7.3
-    <<: *airflow-common
-    command: scheduler
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      af_init:
-        condition: service_completed_successfully
-
   af_init:
     image: dap_af_init:2.7.3
     <<: *airflow-common
@@ -145,6 +129,39 @@ services:
     volumes:
       - ./platform:/sources
 
+  af_scheduler:
+    image: dap_af_scheduler:2.7.3
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+  af_triggerer:
+    image: dap_af_triggerer:2.7.3
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+
   af_webserver:
     image: dap_af_webserver:2.7.3
     <<: *airflow-common
@@ -153,6 +170,50 @@ services:
       - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+  af_worker:
+    image: dap_af_worker:2.7.3
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      # yamllint disable rule:line-length
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}" || celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      <<: *airflow-common-env
+      # Required to handle warm shutdown of the celery workers properly
+      # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+  af_flower:
+    image: dap_af_flower:2.7.3
+    <<: *airflow-common
+    command: celery flower
+    # profiles:
+    #   - flower
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -1,31 +1,13 @@
-#
-# Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements.  See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.
-# The ASF licenses this file to You under the Apache License, Version 2.0
-# (the "License"); you may not use this file except in compliance with
-# the License.  You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
 version: "3.9"
 
 x-superset-common: &superset-common
   build:
-    context: ./superset
+    context: ./docker/superset
     dockerfile: superset.Dockerfile
-  networks:
-    - dap_net
   env_file:
     - .env.superset
   environment:
-    SUPERSET_LOAD_EXAMPLES: true
+    SUPERSET_LOAD_EXAMPLES: "false"
     REDIS_HOST: redis
     REDIS_PORT: 6379
   depends_on: &superset-common-depends-on
@@ -34,7 +16,214 @@ x-superset-common: &superset-common
     ss_db:
       condition: service_healthy
 
+x-airflow-common: &airflow-common
+  # In order to add custom dependencies or upgrade provider packages you can use your extended image.
+  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
+  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
+  build:
+    context: ./docker/airflow
+    dockerfile: airflow.Dockerfile
+  env_file:
+    - .env
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "true"
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    # yamllint disable rule:line-length
+    # Use simple http server on scheduler for health checks
+    # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
+    # yamllint enable rule:line-length
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+  volumes:
+    - ./platform/dags:/opt/airflow/dags
+    - ./platform/airflow/logs:/opt/airflow/logs
+    - ./platform/airflow/config:/opt/airflow/config
+    - ./platform/airflow/plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on: &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    af_db:
+      condition: service_healthy
+
 services:
+  af_db:
+    image: dap_af_db:16.1
+    build:
+      context: ./docker/airflow
+      dockerfile: postgres.Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - dap_af_db_vol:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h af_db -d $${POSTGRES_DB} -U $${POSTGRES_USER}"
+        ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  af_init:
+    image: dap_af_init:2.7.3
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    # yamllint disable rule:line-length
+    command:
+      - -c
+      - |
+        if [[ -z "${AIRFLOW_UID}" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
+          echo "If you are on Linux, you SHOULD follow the instructions below to set "
+          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
+          echo "For other operating systems you can get rid of the warning with manually created .env file:"
+          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
+          echo
+        fi
+        one_meg=1048576
+        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
+        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
+        disk_available=$$(df / | tail -1 | awk '{print $$4}')
+        warning_resources="false"
+        if (( mem_available < 4000 )) ; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
+          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
+          echo
+          warning_resources="true"
+        fi
+        if (( cpus_available < 2 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
+          echo "At least 2 CPUs recommended. You have $${cpus_available}"
+          echo
+          warning_resources="true"
+        fi
+        if (( disk_available < one_meg * 10 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
+          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
+          echo
+          warning_resources="true"
+        fi
+        if [[ $${warning_resources} == "true" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
+          echo "Please follow the instructions to increase amount of resources available:"
+          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
+          echo
+        fi
+        mkdir -p /sources/airflow/logs /sources/airflow/plugins /sources/dags
+        chown -R "${AIRFLOW_UID}:0" /sources/{airflow/logs,airflow/plugins,dags}
+        exec /entrypoint airflow version
+    # yamllint enable rule:line-length
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+    user: "0:0"
+    volumes:
+      - ./platform:/sources
+
+  af_scheduler:
+    image: dap_af_scheduler:2.7.3
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+  af_triggerer:
+    image: dap_af_triggerer:2.7.3
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+
+  af_webserver:
+    image: dap_af_webserver:2.7.3
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+  af_worker:
+    image: dap_af_worker:2.7.3
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      # yamllint disable rule:line-length
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}" || celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    environment:
+      <<: *airflow-common-env
+      # Required to handle warm shutdown of the celery workers properly
+      # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
+  af_flower:
+    image: dap_af_flower:2.7.3
+    <<: *airflow-common
+    command: celery flower
+    # profiles:
+    #   - flower
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      af_init:
+        condition: service_completed_successfully
+
   superset:
     <<: *superset-common
     image: dap_superset:3.1.0rc3-py310
@@ -52,12 +241,10 @@ services:
   ss_db:
     image: dap_ss_db:16.1
     build:
-      context: ./superset
+      context: ./docker/superset
       dockerfile: postgres.Dockerfile
     env_file:
       - .env.superset
-    networks:
-      - dap_net
     ports:
       - "5442:5432"
     volumes:
@@ -73,6 +260,7 @@ services:
     restart: always
 
   ss_init:
+    image: dap_ss_init:3.1.0rc3-py310
     <<: *superset-common
     command: [ "/app/docker/docker-init.sh" ]
     depends_on:
@@ -81,19 +269,17 @@ services:
     volumes:
       - dap_ss_core_vol:/app/superset_home
     healthcheck:
-      disable: true
+      disable: "true"
 
   redis:
     image: dap_redis:7.2.3
     build:
-      context: ./redis
+      context: ./docker/redis
       dockerfile: redis.Dockerfile
     ports:
       - "6379:6379"
     volumes:
       - dap_redis_vol:/data
-    networks:
-      - dap_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -102,11 +288,8 @@ services:
       retries: 50
 
 
-networks:
-  dap_net:
-
 volumes:
+  dap_af_db_vol:
   dap_redis_vol:
   dap_ss_core_vol:
   dap_ss_db_vol:
-

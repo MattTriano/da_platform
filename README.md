@@ -39,27 +39,29 @@ NOTE:
 
 ## Setting up airflow
 
-Create a `.env.airflow` file in this dir
+Create a `.env.airflow` file in this dir and fill it in with values like those below.
 
 ```bash
-POSTGRES_USER=airflow_metadata_db_username
-POSTGRES_PASSWORD=airflow_metadata_db_password 
-POSTGRES_DB=airflow_metadata_db
-
-AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow_metadata_db_username:airflow_metadata_db_password@airflow_db/airflow_metadata_db
-AIRFLOW__CELERY__BROKER_URL=redis://:@redis:6379/0
-AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow_metadata_db_username:airflow_metadata_db_password@airflow_db/airflow_metadata_db
-AIRFLOW_UID=1000
-_AIRFLOW_WWW_USER_USERNAME=airflow_web_gui_username
-_AIRFLOW_WWW_USER_PASSWORD=airflow_web_gui_password
-AIRFLOW__CORE__FERNET_KEY=fernet_key_as_generated_below
-AIRFLOW__CORE__ENABLE_XCOM_PICKLING=True
-AIRFLOW__WEBSERVER__SECRET_KEY=webserver_secret_key_as_generated_below
-AIRFLOW__WEBSERVER__SESSION_BACKEND=securecookie
+AIRFLOW_UID=whatever_you_get_from_(id -u)
+POSTGRES_USER="af_pg_user"
+POSTGRES_PASSWORD="af_pg_pass"
+POSTGRES_DB="af_db_name"
+AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://af_pg_user:af_pg_pass@af_db/af_db_name"
+AIRFLOW__CELERY__RESULT_BACKEND="db+postgresql://af_pg_user:af_pg_pass@af_db/af_db_name"
+AIRFLOW__CELERY__BROKER_URL="redis://:@redis:6379/0"
+AIRFLOW__CORE__FERNET_KEY="fernet_key_as_generated_below"
+AIRFLOW__CORE__ENABLE_XCOM_PICKLING="true"
+AIRFLOW__WEBSERVER__SECRET_KEY="webserver_secret_key_as_generated_below"
+AIRFLOW__WEBSERVER__SESSION_BACKEND="securecookie"
+_AIRFLOW_WWW_USER_CREATE="true"
+_AIRFLOW_WWW_USER_USERNAME="af_gui_user"
+_AIRFLOW_WWW_USER_PASSWORD="af_gui_pass"
 JUPYTER_CONFIG_DIR="/opt/airflow/.jupyter"
 JUPYTER_DATA_DIR="/opt/airflow/.jupyter/share/jupyter"
 JUPYTER_RUNTIME_DIR="/opt/airflow/.jupyter/share/jupyter/runtime"
 ```
+
+Note: If you want to use special characters in passwords, you may run into issues and/or escape those special chars with [this strategy](https://docs.sqlalchemy.org/en/20/core/engines.html#escaping-special-characters-such-as-signs-in-passwords).
 
 ### Generating a Fernet key
 
@@ -91,6 +93,12 @@ python -c 'import secrets; print(secrets.token_hex(16))'
 ## Setting up directories
 
 ```bash
-mkdir -p logs/build logs/airflow
+mkdir -p logs/build
 ```
+
+## Second run through airflow setup
+
+Discoveries along the way:
+* While you can specify dot-env files that aren't named `.env` (e.g. `.env.airflow`), I'd recommend just using the filename `.env` if you are defining a healthcheck that involves an environment variable.
+    * I think I've been burned by this before; I'd like to understand this better.
 

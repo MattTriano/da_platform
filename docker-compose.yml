@@ -4,8 +4,6 @@ x-superset-common: &superset-common
   build:
     context: ./docker/superset
     dockerfile: superset.Dockerfile
-  # networks:
-  #   - dap_net
   env_file:
     - .env.superset
   environment:
@@ -29,10 +27,6 @@ x-airflow-common: &airflow-common
     - .env
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://af_pg_user:af_pg_pass@af_db/af_db_name
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://af_pg_user:af_pg_pass@af_db/af_db_name
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
-    AIRFLOW__CORE__FERNET_KEY: 'ACpckvZqvWg6i15jb7V53GP4E-sfeJq5qcmCjq9W7BQ='
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "true"
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
@@ -40,10 +34,7 @@ x-airflow-common: &airflow-common
     # Use simple http server on scheduler for health checks
     # See https://airflow.apache.org/docs/apache-airflow/stable/administration-and-deployment/logging-monitoring/check-health.html#scheduler-health-check-server
     # yamllint enable rule:line-length
-    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: true
-    # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
-    # for other purpose (development, test and especially production usage) build/extend Airflow image.
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
   volumes:
     - ./platform/dags:/opt/airflow/dags
     - ./platform/airflow/logs:/opt/airflow/logs
@@ -62,12 +53,8 @@ services:
     build:
       context: ./docker/airflow
       dockerfile: postgres.Dockerfile
-    # env_file:
-    #   - .env
-    environment:
-      POSTGRES_USER: af_pg_user
-      POSTGRES_PASSWORD: af_pg_pass
-      POSTGRES_DB: af_db_name
+    env_file:
+      - .env
     volumes:
       - dap_af_db_vol:/var/lib/postgresql/data
     healthcheck:
@@ -154,10 +141,6 @@ services:
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_MIGRATE: "true"
-      _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: af_gui_user
-      _AIRFLOW_WWW_USER_PASSWORD: af_gui_pass
-      _PIP_ADDITIONAL_REQUIREMENTS: ""
     user: "0:0"
     volumes:
       - ./platform:/sources
@@ -201,8 +184,6 @@ services:
       dockerfile: postgres.Dockerfile
     env_file:
       - .env.superset
-    # networks:
-    #   - dap_net
     ports:
       - "5442:5432"
     volumes:
@@ -238,8 +219,6 @@ services:
       - "6379:6379"
     volumes:
       - dap_redis_vol:/data
-    # networks:
-    #   - dap_net
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "ping" ]
@@ -247,9 +226,6 @@ services:
       timeout: 30s
       retries: 50
 
-
-# networks:
-#   dap_net:
 
 volumes:
   dap_af_db_vol:

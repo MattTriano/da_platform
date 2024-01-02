@@ -48,6 +48,26 @@ x-airflow-common: &airflow-common
       condition: service_healthy
 
 services:
+  dwh_db:
+    image: dap_dwh_db:16-3.4
+    build:
+      context: ./docker/postgis
+      dockerfile: postgis.Dockerfile
+    env_file:
+      - .env.dwh
+    volumes:
+      - dap_dwh_db_vol:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h dwh_db -d $${POSTGRES_DB} -U $${POSTGRES_USER}"
+        ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
   af_db:
     image: dap_af_db:16.1
     build:
@@ -290,6 +310,7 @@ services:
 
 volumes:
   dap_af_db_vol:
+  dap_dwh_db_vol:
   dap_redis_vol:
   dap_ss_core_vol:
   dap_ss_db_vol:

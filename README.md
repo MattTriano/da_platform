@@ -2,6 +2,12 @@
 
 This platform aims to facilitate analysis.
 
+## Setting up directories
+
+```bash
+mkdir -p logs/build
+```
+
 ## Setting up superset
 
 Create a `.env.superset` file in this dir
@@ -92,15 +98,39 @@ Generate a decent `AIRFLOW__WEBSERVER__SECRET_KEY` via
 python -c 'import secrets; print(secrets.token_hex(16))'
 ```
 
-## Setting up directories
+## Setting up the Data Warehouse Database
+
+Create a `.env.dwh` file and define the following environment variables.
 
 ```bash
-mkdir -p logs/build
+POSTGRES_USER="dwh_db_user"
+POSTGRES_PASSWORD="dwh_db_pass"
+POSTGRES_DB="dwh_db_name"
 ```
 
-## Second run through airflow setup
+### Enable Airflow to connect to the DWH database
 
-Discoveries along the way:
+Add a line to your `.env` file that defines an [Airflow connection URI](https://airflow.apache.org/docs/apache-airflow/stable/howto/connection.html#uri-format-example) to the DWH db. This connection string will have this format, and it must start with `AIRFLOW_CONN_`.
+
+```bash
+AIRFLOW_CONN_DWH_DB='postgresql+psycopg2://dwh_db_user:dwh_db_pass@dwh_db:5432/dwh_db_name'
+```
+
+NOTE: If your `POSTGRES_PASSWORD` or `POSTGRES_USERNAME` values include special characters, you need to URL-encode them before substituting them into the above template. You can do this with a built in python function as shown below.
+
+```python
+from urllib.parse import quote_plus
+print(quote_plus("dwh_db_pass1!@#$%^&*()1234567890"))
+dwh_db_pass1%21%40%23%24%25%5E%26%2A%28%291234567890
+```
+
+### Enable Superset to connect the the DWH database
+
+Log in to the Superset web interface and then follow [these instructions](https://docs.analytics-data-where-house.dev/setup/superset_setup/) to create your connection.
+
+I'll have to figure something out to extend this to a many-user system.
+
+## Discoveries, questions, and wisdom gained along the way:
 * While you can specify dot-env files that aren't named `.env` (e.g. `.env.airflow`), I'd recommend just using the filename `.env` if you are defining a healthcheck that involves an environment variable.
     * I think I've been burned by this before; I'd like to understand this better.
 
